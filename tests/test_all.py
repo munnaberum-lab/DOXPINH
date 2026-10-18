@@ -12,7 +12,7 @@ import core, db as dbm, bot as botmod, admin_bot, admin as adminmod, templates, 
 
 BRAND = core.BRAND_SC
 WRONG = core.sc("something went wrong")
-PATCH = dict(MAX_MONITORS_PER_USER=3, SLOW_MS=8000, WAKE_TIMEOUT=0.15, AUTO_WAKE=True, BOT_TOKEN="123:ABC",
+PATCH = dict(GH_TOKEN="", GH_REPO="", GH_BRANCH="main", MAX_MONITORS_PER_USER=3, SLOW_MS=8000, WAKE_TIMEOUT=0.15, AUTO_WAKE=True, BOT_TOKEN="123:ABC",
              BASE_URL="https://dx.onrender.com", BRAND_LINK="", QUICK_COOLDOWN=10, LOG_KEEP=50, MONGO_URI="")
 BACKENDS = [("memory", lambda: dbm.MemoryDB()), ("mongo", lambda: dbm.MongoDB("mongodb://fake", "t"))]
 HOSTS = {}
@@ -35,7 +35,9 @@ class _Ctx:
     async def __aexit__(s, *a): return False
 
 class FakeSession:
-    def __init__(s): s.script, s.calls = {}, []
+    def __init__(s): s.script, s.calls, s.posts, s.post_status = {}, [], [], 204
+    def post(s, url, **kw):
+        s.posts.append((url, kw)); return _Ctx(s.post_status)
     def get(s, url, **kw):
         s.calls.append((url, kw)); q = s.script.get(url)
         return _Ctx((q.pop(0) if len(q) > 1 else q[0]) if q else 200)
@@ -667,6 +669,47 @@ class TestFeatures(Base):
         r = await svc.probe("https://a.com"); self.assertEqual(r["state"], "sleeping")
         sess.script["https://b.com"] = [(200, b"INCOMING HTTP REQUEST DETECTED ...")]
         self.assertEqual((await svc.probe("https://b.com"))["state"], "sleeping")
+
+    async def test_render_to_render_hint(self):
+        self.assertTrue(templates.render_to_render("https://other.onrender.com"))
+        self.assertFalse(templates.render_to_render("https://example.com"))
+        self.assertFalse(templates.render_to_render("https://dx.onrender.com"))              # the bot's own address
+        cfg.BASE_URL = "https://my-bot.herokuapp.com"; self.assertFalse(templates.render_to_render("https://other.onrender.com"))
+        cfg.BASE_URL = "https://dx.onrender.com"
+        db, sess, svc, h, mon = await TestBot.setup_user(self, BACKENDS[0][1], url="https://other.onrender.com"); i = mon["id"]
+        cfg.GH_TOKEN = ""; cfg.WAKE_TIMEOUT = 0.1; sess.script[mon["url"]] = [502]; await h.tap(1, f"wake:{i}")
+        self.assertIn(core.sc("cannot wake another render site"), h.last(1))
+        self.assertIn("kick(", read("webapp/index.html")); self.assertIn("WAKE_URLS", read(".github/workflows/keepalive.yml"))
+
+    async def test_github_wake_dispatch(self):
+        db, sess, svc, h, mon = await TestBot.setup_user(self, BACKENDS[0][1], url="https://other.onrender.com"); i = mon["id"]
+        cfg.GH_TOKEN, cfg.GH_REPO, cfg.GH_BRANCH = "ghp_test", "me/repo", "main"; cfg.WAKE_TIMEOUT = 0.1
+        sess.script[mon["url"]] = [502]; await h.tap(1, f"wake:{i}")
+        self.assertEqual(len(sess.posts), 1); url, kw = sess.posts[0]
+        self.assertTrue(url.endswith("/repos/me/repo/actions/workflows/wake.yml/dispatches"))
+        self.assertEqual(kw["json"], {"ref": "main", "inputs": {"url": "https://other.onrender.com"}})
+        self.assertEqual(kw["headers"]["Authorization"], "Bearer ghp_test")
+        self.assertIn(core.sc("wake request sent through github"), h.last(1))
+        await h.tap(1, f"wake:{i}"); self.assertEqual(len(sess.posts), 1)                  # throttled: not spammed
+        await svc.gh_wake("https://example.com"); self.assertEqual(len(sess.posts), 1)       # never for non-Render links
+        svc._gh_last.clear(); sess.post_status = 401; self.assertFalse(await svc.gh_wake(mon["url"]))   # bad token → no crash
+        cfg.GH_TOKEN = ""; svc._gh_last.clear(); sess.posts.clear(); self.assertFalse(await svc.gh_wake(mon["url"])); self.assertEqual(sess.posts, [])
+        wf = read(".github/workflows/wake.yml"); self.assertIn("workflow_dispatch", wf); self.assertIn("onrender", wf)
+        self.assertNotIn("${{ inputs.url }}\n          run", wf); self.assertIn("URL: ${{ inputs.url }}", wf)   # no shell injection
+
+    async def test_many_sites_sleeping_at_once(self):
+        core.GH_SPACING = 0.01
+        db, sess, svc = await self.env(); cfg.GH_TOKEN, cfg.GH_REPO = "ghp_test", "me/repo"; cfg.WAKE_TIMEOUT = 0.2
+        ms = []
+        for n in "abc":
+            m, _ = await svc.add(1, f"https://{n}.onrender.com"); ms.append(m); sess.script[m["url"]] = [502]
+        results = await asyncio.gather(*(svc.wake(m) for m in ms))
+        sent = sorted(kw["json"]["inputs"]["url"] for _, kw in sess.posts)
+        self.assertEqual(sent, [f"https://{n}.onrender.com" for n in "abc"])           # one workflow run per site, none lost
+        self.assertTrue(all(r["gh"] for r in results))
+        sess.script["https://b.onrender.com"] = [502, 200]; sess.posts.clear()           # one site wakes, the others keep failing
+        r = await svc.wake(ms[1]); self.assertTrue(r["ok"] and r["woke"])
+        wf = read(".github/workflows/wake.yml"); self.assertNotIn("concurrency", wf)      # runs in parallel, never queued behind each other
 
     async def test_heartbeat_reports_sleep_gap(self):
         db, sess, svc = await self.env(); bot = FBot()

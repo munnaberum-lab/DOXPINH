@@ -1,13 +1,24 @@
 """⚡ Dotxbrain Uptime Pro — every Telegram message template lives here (HTML parse mode)."""
 import time
+from urllib.parse import urlparse
 
 import info as cfg
-from core import (ago, avg_ms, bar, clock, dur, esc, head, row, sc, series, spark, uptime)
+from core import (ago, avg_ms, bar, clock, dur, esc, head, render_to_render, row, sc, series, spark, uptime)
 
 ICON = {"up": "🟢", "sleeping": "😴", "down": "🔴", "new": "⚪"}
 LABEL = {"up": "online", "sleeping": "sleeping", "down": "offline", "new": "pending"}
 KIND = {"ping": "🏓", "wake": "☀️", "auto": "🤖"}
 LINE = "┈" * 16
+
+
+def phone_hint():
+    return ("🛰 " + sc("this bot runs on render, and render cannot wake another render site from inside its own network "
+                       "(it gets an instant 502). open the mini app and tap wake up — it wakes the site from your phone — "
+                       "or set GH_TOKEN + GH_REPO so github wakes it automatically (see readme).") + "\n")
+
+
+def gh_note():
+    return "🛰 " + sc("wake request sent through github (outside render). give it 1–3 minutes, then tap wake up again.") + "\n"
 
 
 def grade(p):
@@ -137,7 +148,8 @@ def alert_down(m, res):
     return (f"🚨 <b>{sc('site is down')}</b>\n🌐 <b>{esc(m['name'])}</b>\n<code>{esc(m['url'])}</code>\n\n"
             + row("📡", "http code", res["r"]["code"] or "—") + row("📝", "reason", sc(res["r"]["note"]))
             + row("⏱", "tried for", f"{res['secs']}s") + row("🕒", "since", clock(time.time(), "%I:%M %p"))
-            + "\n" + sc("i will keep retrying and tell you when it is back."))
+            + "\n" + (phone_hint() if render_to_render(m["url"]) else "")
+            + sc("i will keep retrying and tell you when it is back."))
 
 
 def alert_state(m, r):

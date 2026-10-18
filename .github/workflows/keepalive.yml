@@ -1,6 +1,8 @@
 # Dotxbrain Uptime Pro — external keep-alive.
 # A sleeping Render service cannot wake itself; this job knocks on its door every 5 minutes (like opening it in a
 # browser) and waits up to ~2 minutes for the cold start to finish.
+# Optional: Settings → Secrets and variables → Actions → *Variables* tab → WAKE_URLS = space-separated links of your
+#           other Render sites (this job runs OUTSIDE Render, so it can really wake them).
 # Setup: GitHub repo → Settings → Secrets and variables → Actions → New secret
 #        APP_URL = https://<your-service>.onrender.com
 name: keepalive
@@ -24,3 +26,16 @@ jobs:
             sleep 10
           done
           echo "service did not answer" && exit 1
+      - name: Wake your other sleeping sites (optional)
+        env:
+          WAKE_URLS: ${{ vars.WAKE_URLS }}
+        run: |
+          [ -z "$WAKE_URLS" ] && echo "WAKE_URLS not set - skipping" && exit 0
+          for u in $WAKE_URLS; do
+            for i in 1 2 3 4 5 6; do
+              code=$(curl -s -o /dev/null -m 60 -w "%{http_code}" "$u" || true)
+              echo "$u try $i -> HTTP $code"
+              [ "$code" = "200" ] && break
+              sleep 10
+            done
+          done

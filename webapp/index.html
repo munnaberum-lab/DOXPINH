@@ -267,8 +267,16 @@ async function loadAdmin() {
 }
 
 // ───────────── events ─────────────
+// Render never wakes a sleeping site for requests coming from inside Render (instant 502), but a request from your phone does.
+function kick(url) {
+  if (!url) return null; let on = true;
+  const hit = () => { if (on) fetch(url, {mode: "no-cors", cache: "no-store"}).catch(() => {}); };
+  hit(); const t = setInterval(hit, 5000); return () => { on = false; clearInterval(t); };
+}
 async function act(id, a, extra = {}, admin = false, btn) {
   if (a === "delete" && !confirm("Delete this monitor?")) return;
+  const stopKick = a === "wake" ? kick(byId(id)?.url) : null;
+  if (stopKick) toast("Waking from your phone…");
   btn && (btn.disabled = true, (a === "wake" || a === "ping") && btn.classList.add("busy"));
   try {
     const j = await api(admin ? "/api/admin/monitor" : "/api/act", {id, act: a, ...extra});
@@ -278,6 +286,7 @@ async function act(id, a, extra = {}, admin = false, btn) {
     else if (a === "wake") { const r = j.result; buzz(r.ok ? "success" : "error"); resultSheet(r.ok ? (r.woke ? "wake-up successful" : "already awake") : "could not wake", r, [["woke in", r.secs + "s"], ["attempts", r.attempts]]); }
     else { detailSheet(j.monitor, admin); toast("Saved"); }
   } catch (err) { buzz("error"); toast(err.message); btn && (btn.disabled = false, btn.classList.remove("busy")); }
+  finally { stopKick?.(); }
 }
 
 document.addEventListener("click", async e => {

@@ -47,6 +47,19 @@ then boots it in ~30–60 s). Set up **one** of these (two is even safer):
 When the bot comes back after being unreachable for more than 5 minutes, it messages every admin
 ("bot was asleep · offline for 23m") so you can see whether your pinger works.
 
+## 🛰 Why the bot cannot wake another Render site by itself
+If this bot runs on Render, a request from it to another `*.onrender.com` site stays inside Render's network and gets an
+instant `502` — the sleeping site is **not** started. A request from outside Render (your phone, GitHub, UptimeRobot) does.
+So:
+- **Mini App → Wake up** fires the request from *your phone* while the bot confirms the result. Works right now.
+- **Fully automatic (recommended):** add `GH_TOKEN` + `GH_REPO` on Render. The bot then triggers `.github/workflows/wake.yml`
+  by itself for every sleeping `*.onrender.com` link — nothing to add per link. Token: GitHub → Settings → Developer settings →
+  Fine-grained tokens → only this repo → Permissions → **Actions: Read and write**. Keep it only in Render's Environment.
+- **Fixed list instead:** repo → Settings → Secrets and variables → Actions → **Variables** → `WAKE_URLS`
+  = your links separated by spaces. The keepalive workflow wakes them every 5 min from outside Render.
+- Hosting the bot somewhere that is *not* Render also removes the limit.
+- Render's 750 free hours/month are shared by all free services of your account; an always-awake bot uses ~730 of them.
+
 ## Commands
 `/start` `/list` `/stats` `/settings` `/help` `/ping url` `/wake url` · admins: `/admin`
 

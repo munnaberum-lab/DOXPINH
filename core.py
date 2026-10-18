@@ -20,6 +20,7 @@ INTERVALS = [60, 120, 300, 600, 900]
 MARKERS = ("waking up", "service waking", "spinning up", "application loading", "starting up",
            "incoming http request detected", "render - application")
 WAKE_GAP = 4  # seconds between wake attempts
+GH_SPACING = 0.5          # seconds between GitHub wake requests when several sites sleep at once
 
 # ═════════════════════ ꜱᴍᴀʟʟ ᴄᴀᴘs + ʙʀᴀɴᴅɪɴɢ ═════════════════════
 _SC = dict(zip("abcdefghijklmnopqrstuvwxyz", "ᴀʙᴄᴅᴇғɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ"))
@@ -122,6 +123,13 @@ def verify_init(init, token=None, max_age=86400):
         return None
 
 # ═════════════════════ ᴍᴏɴɪᴛᴏʀ ᴍᴏᴅᴇʟ ═════════════════════
+def render_to_render(url):
+    """True when this bot runs on Render AND the monitored site is another *.onrender.com service.
+    Render answers such requests (sent from inside its own network) with an instant 502 and never wakes the site."""
+    host = (urlparse(url).hostname or "").lower(); me = (urlparse(cfg.BASE_URL).hostname or "").lower()
+    return bool(me) and me.endswith(".onrender.com") and host.endswith(".onrender.com") and host != me
+
+
 class UserError(Exception):
     def __init__(self, msg, status=400):
         super().__init__(msg); self.status = status
@@ -166,6 +174,7 @@ class Service:
         self.resolve = default_resolve
         self.settings, self.banned, self.started = {}, set(), time.time()
         self.last_broadcast = None
+        self._gh_last, self._gh_lock = {}, asyncio.Lock()
 
     # ── live admin settings & bans (cached in memory, persisted in the DB) ──
     async def load_state(self):
@@ -246,23 +255,45 @@ class Service:
         await self.record(m, "ping", r)
         return r
 
+    async def gh_wake(self, url):
+        """Asks GitHub Actions (outside Render) to knock on `url` — that is what really wakes a sleeping Render site."""
+        if not (cfg.GH_TOKEN and cfg.GH_REPO and render_to_render(url)): return False
+        now = time.time(); last = self._gh_last.get(url, 0)
+        if now - last < 90: return True                                  # already requested a moment ago
+        self._gh_last[url] = now
+        try:
+            async with self._gh_lock:                                    # many links at once → dispatch one by one (GitHub rate limits)
+              async with self.session.post(
+                    f"https://api.github.com/repos/{cfg.GH_REPO}/actions/workflows/wake.yml/dispatches",
+                    headers={"Authorization": f"Bearer {cfg.GH_TOKEN}", "Accept": "application/vnd.github+json",
+                             "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "dotxbrain-uptime-pro"},
+                    json={"ref": cfg.GH_BRANCH, "inputs": {"url": url}}, timeout=aiohttp.ClientTimeout(total=15)) as r:
+                status = r.status
+              await asyncio.sleep(GH_SPACING)
+            if status == 204: log.info("github wake requested for %s", urlparse(url).hostname); return True
+            log.warning("github wake dispatch failed: HTTP %s", status)
+        except Exception as e:
+            log.warning("github wake dispatch error: %s", e)
+        return False
+
     async def wake(self, m, progress=None):
-        t0, attempts = time.time(), 0
+        t0, attempts, gh = time.time(), 0, False
         while True:
             attempts += 1
+            if not gh or (attempts % 20 == 0): gh = await self.gh_wake(m["url"]) or gh
             r = await self.probe(m["url"], 20)
             secs = int(time.time() - t0)
             if r["state"] == "up":
                 woke = attempts > 1 or r["cold"]
                 await self.record(m, "wake" if woke else "ping", r)
-                return dict(ok=True, woke=woke, attempts=attempts, secs=secs, r=r)
+                return dict(ok=True, woke=woke, attempts=attempts, secs=secs, r=r, gh=gh)
             if progress:
                 try: await progress(attempts, r, secs)
                 except Exception: log.exception("progress callback failed")
             if r.get("fatal") or time.time() - t0 >= cfg.WAKE_TIMEOUT: break
             await asyncio.sleep(WAKE_GAP)
         await self.record(m, "wake", r)
-        return dict(ok=False, woke=False, attempts=attempts, secs=int(time.time() - t0), r=r)
+        return dict(ok=False, woke=False, attempts=attempts, secs=int(time.time() - t0), r=r, gh=gh)
 
     async def add(self, uid, raw):
         url = norm_url(raw)

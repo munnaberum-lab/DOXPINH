@@ -1,0 +1,29 @@
+# Dotxbrain Uptime Pro — on-demand wake-up, triggered BY THE BOT (no manual setup per link).
+# A request from inside Render never wakes another Render site, but this job runs on GitHub, outside Render.
+# Needs on Render:  GH_TOKEN (fine-grained token, this repo only, Actions: Read and write)  +  GH_REPO = owner/repo
+name: wake
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: "Render site to wake (https://something.onrender.com)"
+        required: true
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Wake the site
+        env:
+          URL: ${{ inputs.url }}
+        run: |
+          if ! [[ "$URL" =~ ^https://[A-Za-z0-9-]+\.onrender\.com(/[^[:space:]]*)?$ ]]; then
+            echo "refusing: only https://*.onrender.com links are allowed"; exit 1
+          fi
+          for i in $(seq 1 8); do
+            code=$(curl -s -o /dev/null -m 60 -L -w "%{http_code}" "$URL" || true)
+            echo "try $i -> HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "site did not answer yet (it may need a bit longer)"; exit 1

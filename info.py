@@ -43,6 +43,12 @@ MONGO_URI = os.getenv("MONGO_URI", "").strip()          # mongodb+srv://USER:PAS
 MONGO_DB = os.getenv("MONGO_DB", "dotxbrain_uptime")
 ADMIN_IDS = _ids(os.getenv("ADMIN_IDS", ""))            # your Telegram user id(s), comma separated → unlocks /admin
 
+# ───────────── ɢɪᴛʜᴜʙ ᴡᴀᴋᴇ-ʜᴇʟᴘᴇʀ (optional) ─────────────
+# Render cannot wake another Render site from inside its own network, so the bot asks GitHub Actions (outside Render) to do it.
+GH_TOKEN = os.getenv("GH_TOKEN", "").strip()            # fine-grained token: this repo only → Actions: Read and write
+GH_REPO = os.getenv("GH_REPO", "").strip()              # owner/repo, e.g. munnaberum-lab/DOXPINH
+GH_BRANCH = os.getenv("GH_BRANCH", "main").strip()
+
 # ───────────── ʙʀᴀɴᴅɪɴɢ ─────────────
 BRAND = "Dotxbrain"
 BRAND_LINK = os.getenv("BRAND_LINK", "https://t.me/dotxbrain_official")
