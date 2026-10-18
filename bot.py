@@ -248,7 +248,7 @@ async def cb_wake(c: CallbackQuery):
         t = report("already awake", "✅", m, r, "\n✅ " + sc("it was awake, so i sent a ping instead."))
     else:
         t = report("could not wake", "❌", m, r, "\n" + T.row("⏱", "tried for", f"{res['secs']}s") +
-                   "\n🔴 " + sc("check your render logs / deployment."))
+                   "\n🔴 " + sc("no answer yet. some sites need 2–3 min — tap wake up again. if it keeps failing, check the render logs."))
     await edit(c.message, t, kb_back(m["id"]))
 
 @router.callback_query(F.data.startswith("logs:"))

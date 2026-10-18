@@ -6,6 +6,24 @@ Never paste tokens or passwords into this file.
 import os
 
 
+def _load_dotenv():
+    """Reads KEY=VALUE lines from a local `.env` file (for running on your own PC).
+    On Render the values come from Environment settings instead; real env vars are never overridden."""
+    try:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line: continue
+        k, v = line.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+_load_dotenv()
+
+
 def _ids(raw):
     out = set()
     for p in str(raw or "").replace(";", ",").split(","):
@@ -20,10 +38,10 @@ def _bool(name, default):
 
 
 # ───────────── ᴄʀᴇᴅᴇɴᴛɪᴀʟs (env vars) ─────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8863952531:AAHmpmgvPgY21kmTrbUzHyO0rP1C-_0mV3s").strip()          # from @BotFather
-MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Dotxbrain:01L3uvnMHkI1cJU6@cluster0.dda2uqz.mongodb.net/").strip()          # mongodb+srv://USER:PASS@cluster.../  (empty = temporary memory DB)
+BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()          # from @BotFather
+MONGO_URI = os.getenv("MONGO_URI", "").strip()          # mongodb+srv://USER:PASS@cluster.../  (empty = temporary memory DB)
 MONGO_DB = os.getenv("MONGO_DB", "dotxbrain_uptime")
-ADMIN_IDS = _ids(os.getenv("ADMIN_IDS", "7832626481"))            # your Telegram user id(s), comma separated → unlocks /admin
+ADMIN_IDS = _ids(os.getenv("ADMIN_IDS", ""))            # your Telegram user id(s), comma separated → unlocks /admin
 
 # ───────────── ʙʀᴀɴᴅɪɴɢ ─────────────
 BRAND = "Dotxbrain"
@@ -37,7 +55,7 @@ PORT = int(os.getenv("PORT", "10000"))
 MAX_MONITORS_PER_USER = int(os.getenv("MAX_MONITORS_PER_USER", "10"))
 MIN_INTERVAL = 60          # seconds
 DEFAULT_INTERVAL = 300     # 5 min (Render free sleeps after 15 min idle)
-WAKE_TIMEOUT = 90          # max seconds to keep trying to wake a sleeping site
+WAKE_TIMEOUT = 150         # max seconds (Render cold starts can take 1–2 min) to keep trying to wake a sleeping site
 SLOW_MS = 8000             # an OK reply slower than this = the site was cold-starting
 AUTO_WAKE = _bool("AUTO_WAKE", True)
 LOG_KEEP = 50              # log entries stored per monitor

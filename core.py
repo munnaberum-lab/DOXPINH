@@ -9,9 +9,16 @@ import info as cfg
 
 log = logging.getLogger("dotxbrain")
 
-UA = "Mozilla/5.0 (compatible; DotxbrainUptimePro/2.0)"
+# Sleeping Render sites wake up for a real browser visit, so the probe looks like one (same headers a phone browser sends).
+UA = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) "
+      "Chrome/124.0 Mobile Safari/537.36 DotxbrainUptimePro/3.0")
+HEADERS = {"User-Agent": UA,
+           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+           "Accept-Language": "en-US,en;q=0.9", "Cache-Control": "no-cache", "Pragma": "no-cache",
+           "Upgrade-Insecure-Requests": "1"}
 INTERVALS = [60, 120, 300, 600, 900]
-MARKERS = ("waking up", "service waking", "spinning up", "application loading", "starting up")
+MARKERS = ("waking up", "service waking", "spinning up", "application loading", "starting up",
+           "incoming http request detected", "render - application")
 WAKE_GAP = 4  # seconds between wake attempts
 
 # ═════════════════════ ꜱᴍᴀʟʟ ᴄᴀᴘs + ʙʀᴀɴᴅɪɴɢ ═════════════════════
@@ -210,7 +217,7 @@ class Service:
         try:
             # allow_redirects=False → a redirect can never lead us to an internal address (SSRF-safe).
             async with self.session.get(url, timeout=aiohttp.ClientTimeout(total=timeout),
-                                        headers={"User-Agent": UA}, allow_redirects=False) as r:
+                                        headers=HEADERS, allow_redirects=False) as r:
                 chunk = await r.content.read(4096)
                 ms = int((time.perf_counter() - t0) * 1000)
                 txt = chunk.decode("utf-8", "ignore").lower()

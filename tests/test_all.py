@@ -181,7 +181,7 @@ class TestService(Base):
     async def test_probe_request_is_safe(self):
         _, sess, svc = await self.env(); await svc.probe("https://a.com")
         kw = sess.calls[0][1]
-        self.assertFalse(kw["allow_redirects"]); self.assertIn("User-Agent", kw["headers"])
+        self.assertFalse(kw["allow_redirects"]); self.assertIn("User-Agent", kw["headers"]); self.assertIn("text/html", kw["headers"]["Accept"])
 
     async def test_cold_start_detected(self):
         _, sess, svc = await self.env(); cfg.SLOW_MS = -1
@@ -661,6 +661,12 @@ class TestFeatures(Base):
         st, r = await call(app, "POST", "/api/prefs", uid=1, body={"notify": False}); self.assertFalse((await db.get_user(1))["notify"])
         self.assertEqual((await call(app, "POST", "/api/prefs", uid=1, body={"notify": "no"}))[0], 400)
         st, r = await call(app, "POST", "/api/checkall", uid=1, body={}); self.assertEqual((st, r["up"]), (200, 1))
+
+    async def test_render_loading_page_counts_as_sleeping(self):
+        db, sess, svc = await self.env(); sess.script["https://a.com"] = [(200, b"<title>Render - Application loading</title>")]
+        r = await svc.probe("https://a.com"); self.assertEqual(r["state"], "sleeping")
+        sess.script["https://b.com"] = [(200, b"INCOMING HTTP REQUEST DETECTED ...")]
+        self.assertEqual((await svc.probe("https://b.com"))["state"], "sleeping")
 
     async def test_heartbeat_reports_sleep_gap(self):
         db, sess, svc = await self.env(); bot = FBot()
