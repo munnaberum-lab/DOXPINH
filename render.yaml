@@ -1,0 +1,16 @@
+# Dotxbrain Uptime Pro — Render blueprint
+services:
+  - type: web
+    name: dotxbrain-uptime-pro
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: BOT_TOKEN        # from @BotFather
+        sync: false
+      - key: MONGO_URI        # MongoDB Atlas connection string
+        sync: false
+      - key: ADMIN_IDS        # your Telegram user id(s), comma separated → unlocks /admin
+        sync: false
+      - key: BRAND_LINK
+        sync: false
