@@ -38,7 +38,7 @@ def _bool(name, default):
 
 
 # ───────────── ᴄʀᴇᴅᴇɴᴛɪᴀʟs (env vars) ─────────────
-BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()          # from @BotFather
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8863952531:AAFx3548Ov8bgpW-FEs0WEryG8CjD8KXoCU").strip()          # from @BotFather
 MONGO_URI = os.getenv("MONGO_URI", "").strip()          # mongodb+srv://USER:PASS@cluster.../  (empty = temporary memory DB)
 MONGO_DB = os.getenv("MONGO_DB", "dotxbrain_uptime")
 ADMIN_IDS = _ids(os.getenv("ADMIN_IDS", ""))            # your Telegram user id(s), comma separated → unlocks /admin
